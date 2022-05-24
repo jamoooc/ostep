@@ -1,2 +1,9 @@
 /ostep-homework
 .DS_Store
+
+/homework/cpu-api/shell.c
+/homework/cpu-api/shell
+/homework/cpu-api/file.txt
+
+/homework/**/bin
+/homework/**/NOTES.md
