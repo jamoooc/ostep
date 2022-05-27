@@ -14,19 +14,24 @@
 // other communication mechanism such as UNIX sockets.
 
 // measure time cost of context switch
+#define _GNU_SOURCE 
 
 #include <time.h>
+#include <sched.h>
 #include <errno.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
 #define MAX_WRITE 100
 #define NSEC_IN_SEC 1000000000 // 1,000,000,000
 
 typedef struct timespec timespec_t;
+// typedef u_int64_t uint64_t;
 
 static uint64_t elapsed_nsecs(timespec_t *start, timespec_t *end) {
   timespec_t temp = { 0 };
@@ -63,11 +68,11 @@ enum {
 
 int main(void) {
 
+  cpu_set_t set;
   uint64_t avg = 0;
+  timespec_t clock_res = { 0 };
   timespec_t start1 = { 0 }, end1 = { 0 };
   timespec_t start2 = { 0 }, end2 = { 0 };
-
-  // TODO: sched_setaffinity
 
   // create two unidirectional pipes for the child processes communication, 
   // and two data pipes to receive timespec_t data from each process. By 
@@ -83,12 +88,22 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
+  if ((clock_getres(CLOCK_MONOTONIC_RAW, &clock_res)) < 0) {
+    fprintf(stderr, "Error getting clock resolution. %i: %s\n", errno, strerror(errno));
+    exit(EXIT_FAILURE);
+  };
+  printf("Minimum system clock resolution: %ld nsecs\n", clock_res.tv_nsec);
+
   pid_t pid1 = fork();
   if (pid1 < 0) {
     fprintf(stderr, "Error forking process.\n");
     exit(EXIT_FAILURE);
   } else if (pid1 == 0) {
-    fprintf(stdout, "Process one started. PID: %i.\n", getpid());
+
+    CPU_SET(0, &set);
+    sched_setaffinity(getpid(), sizeof(cpu_set_t), &set);
+    fprintf(stdout, "Process one started. PID: %i. CPU: %i\n", getpid(), sched_getcpu());
+
     char c;
     for (int i = 0; i < MAX_WRITE; i++) {
 
@@ -129,7 +144,10 @@ int main(void) {
     fprintf(stderr, "Error forking process.\n");
     exit(EXIT_FAILURE);
   } else if (pid2 == 0) {
-    fprintf(stdout, "Process two started. PID: %i.\n", getpid());
+    
+    CPU_SET(0, &set);
+    sched_setaffinity(getpid(), sizeof(cpu_set_t), &set);
+    fprintf(stdout, "Process two started. PID: %i. CPU: %i\n", getpid(), sched_getcpu());
 
     char c;
     for (int i = 0; i < MAX_WRITE; i++) {
