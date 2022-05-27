@@ -57,22 +57,29 @@ enum {
 enum {
   CHILD1,
   CHILD2,
-  DATA // this pipe allows each process to write to a shared array
+  DATA1, // this pipe allows each process to write to a shared array
+  DATA2
 };
 
 int main(void) {
 
   uint64_t avg = 0;
-  timespec_t start = { 0 }, end = { 0 };
-  uint64_t cs_costs[MAX_WRITE * 2] = { 0 };
+  timespec_t start1 = { 0 }, end1 = { 0 };
+  timespec_t start2 = { 0 }, end2 = { 0 };
 
   // TODO: sched_setaffinity
 
-  // create two unidirectional pipes, by default they will be
-  // blocking and allow the CPU to perform a context switch
-  int fildes[3][2];
-  if (pipe(fildes[CHILD1]) < 0 || pipe(fildes[CHILD2]) < 0 || pipe(fildes[DATA]) < 0) {
-    fprintf(stderr, "Error creating pipe. %i: %s.\n", errno, strerror(errno));
+  // create two unidirectional pipes for the child processes communication, 
+  // and two data pipes to receive timespec_t data from each process. By 
+  // default the pipes block and allow the CPU to perform a context switch.
+  int fildes[4][2];
+  if (pipe(fildes[CHILD1]) < 0 || pipe(fildes[CHILD2]) < 0) {
+    fprintf(stderr, "Error creating communication pipes. %i: %s.\n", errno, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+
+  if (pipe(fildes[DATA1]) < 0 || pipe(fildes[DATA2]) < 0) {
+    fprintf(stderr, "Error creating data pipes. %i: %s.\n", errno, strerror(errno));
     exit(EXIT_FAILURE);
   }
 
@@ -90,19 +97,25 @@ int main(void) {
         exit(EXIT_FAILURE);
       }
 
-      int rv = 0;
-      clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-      rv = read(fildes[CHILD1][READ], &c, sizeof("a") - 1); // blocking read
-      clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-
-      if (rv < 1) {
+      // record the start of process one's blocking read, when process two has successfully
+      // read process one's write, record the end time (the cpu has switched to the blocked process two)
+      clock_gettime(CLOCK_MONOTONIC_RAW, &start1);
+      if (read(fildes[CHILD1][READ], &c, sizeof("a") - 1) < 1) { // blocking read
         fprintf(stderr, "Error reading from pipe in process one. %i: %s.\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
       }
+      clock_gettime(CLOCK_MONOTONIC_RAW, &end2);
 
-      // write elapsed nsecs to the shared data pipe
-      uint64_t diff = elapsed_nsecs(&start, &end); 
-      if (write(fildes[DATA][WRITE], &diff, sizeof(diff)) != sizeof(diff)) {
+      // write end time to process two's data pipe (if a start time has been recorded already)
+      if (i > 0) {
+        if (write(fildes[DATA2][WRITE], &end2, sizeof(end2)) != sizeof(end2)) {
+          fprintf(stderr, "Error writing to data pipe in process one. %i: %s.\n", errno, strerror(errno));
+          exit(EXIT_FAILURE);
+        }
+      }
+
+      // write start time of process one's blocking read to process one's data pipe
+      if (write(fildes[DATA1][WRITE], &start1, sizeof(start1)) != sizeof(start1)) {
         fprintf(stderr, "Error writing to data pipe in process one. %i: %s.\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
       }
@@ -120,22 +133,29 @@ int main(void) {
 
     char c;
     for (int i = 0; i < MAX_WRITE; i++) {
+
       if (write(fildes[CHILD1][WRITE], "a", sizeof("a") - 1) != 1) {
         fprintf(stderr, "Error writing to pipe in process two. %i: %s.\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
       }
-      int rv = 0;
-      clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-      rv = read(fildes[CHILD2][READ], &c, sizeof("b") - 1);
-      clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-      if (rv < 1) {
+
+      clock_gettime(CLOCK_MONOTONIC_RAW, &start2);
+      if (read(fildes[CHILD2][READ], &c, sizeof("b") - 1) < 1) {
         fprintf(stderr, "Error reading from pipe in process two. %i: %s.\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
       }
+      clock_gettime(CLOCK_MONOTONIC_RAW, &end1);
 
-      // write elapsed nsecs to the shared data pipe
-      uint64_t diff = elapsed_nsecs(&start, &end); 
-      if (write(fildes[DATA][WRITE], &diff, sizeof(diff)) != sizeof(diff)) {
+      // write end time to process one's data pipe (if a start time has been recorded already)
+      if (i > 0) {
+        if (write(fildes[DATA1][WRITE], &end1, sizeof(end2)) != sizeof(end2)) {
+          fprintf(stderr, "Error writing to data pipe in process one. %i: %s.\n", errno, strerror(errno));
+          exit(EXIT_FAILURE);
+        }
+      }
+
+      // write start time of process two's blocking read to process one's data pipe
+      if (write(fildes[DATA2][WRITE], &start2, sizeof(start1)) != sizeof(start1)) {
         fprintf(stderr, "Error writing to data pipe in process one. %i: %s.\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
       }
@@ -147,21 +167,47 @@ int main(void) {
   waitpid(pid1, 0, 0);
   waitpid(pid2, 0, 0);
 
-  // read the elapsed times from the data pipe and print the average
-  for (int i = 0; i < 200; i++) {
-    if (read(fildes[DATA][READ], &cs_costs[i], sizeof(uint64_t)) != sizeof(uint64_t)) {
+  // read the timespecs from the data pipes and print the average
+  timespec_t tmp1 = { 0 }, tmp2 = { 0 };
+  uint64_t cs_costs[MAX_WRITE * 2] = { 0 };
+  uint64_t *tp = cs_costs;
+
+  // read the start and end times and get elapsed nsecs from the DATA1 pipe
+  for (int i = 0; i < MAX_WRITE / 2; i++) {
+    if (read(fildes[DATA1][READ], &tmp1, sizeof(timespec_t)) != sizeof(timespec_t)) {
       fprintf(stderr, "Error reading from pipe in process two. %i: %s.\n", errno, strerror(errno));
       exit(EXIT_FAILURE);
     }
+    if (read(fildes[DATA1][READ], &tmp2, sizeof(timespec_t)) != sizeof(timespec_t)) {
+      fprintf(stderr, "Error reading from pipe in process two. %i: %s.\n", errno, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+    *tp++ = elapsed_nsecs(&tmp1, &tmp2);
   }
-  fprintf(stdout, "Average context switch cost: %llu.\n", average_cost(cs_costs));
+
+  // read the start and end times and get elapsed nsecs from the DATA1 pipe
+  for (int i = 0; i < MAX_WRITE / 2; i++) {
+    if (read(fildes[DATA2][READ], &tmp1, sizeof(timespec_t)) != sizeof(timespec_t)) {
+      fprintf(stderr, "Error reading from pipe in process two. %i: %s.\n", errno, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+    if (read(fildes[DATA2][READ], &tmp2, sizeof(timespec_t)) != sizeof(timespec_t)) {
+      fprintf(stderr, "Error reading from pipe in process two. %i: %s.\n", errno, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+    *tp++ = elapsed_nsecs(&tmp1, &tmp2);
+  }
+
+  fprintf(stdout, "Average context switch cost: %llu nanoseconds.\n", average_cost(cs_costs));
 
   close(fildes[CHILD1][READ]);
   close(fildes[CHILD1][WRITE]);
   close(fildes[CHILD2][READ]);
   close(fildes[CHILD2][WRITE]);
-  close(fildes[DATA][READ]);
-  close(fildes[DATA][WRITE]);
+  close(fildes[DATA1][READ]);
+  close(fildes[DATA1][WRITE]);
+  close(fildes[DATA2][READ]);
+  close(fildes[DATA2][WRITE]);
 
   exit(EXIT_SUCCESS);
 }
