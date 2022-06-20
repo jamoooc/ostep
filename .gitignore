@@ -1,5 +1,6 @@
-/ostep-homework
 .DS_Store
+
+/ostep-homework
 
 /homework/cpu-api/shell.c
 /homework/cpu-api/shell
@@ -7,3 +8,5 @@
 
 /homework/**/bin
 /homework/**/NOTES.md
+
+**/*.dSYM
