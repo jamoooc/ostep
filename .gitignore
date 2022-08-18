@@ -1,4 +1,5 @@
 .DS_Store
+.vscode
 
 /ostep-homework
 
@@ -7,6 +8,7 @@
 /homework/cpu-api/file.txt
 
 /homework/**/bin
-/homework/**/NOTES.md
+/homework/**/*.md
+/homework/**/*.out
 
 **/*.dSYM
