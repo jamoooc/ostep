@@ -21,9 +21,9 @@
 #include <unistd.h>
 
 int main(void) {
-  fprintf(stdout, "memory-user\n");
+  fprintf(stdout, "memory-user. PID: %i\n", getpid());
 
-  size_t mebi = 1024; 
+  size_t mebi = 1024;
 
   char *arr = NULL;
   if ((arr = malloc(sizeof(char) * (mebi * 1024 * 1024))) == NULL) {
