@@ -34,15 +34,19 @@ int main(int argc, char **argv) {
   cpu_set_t set;
   CPU_ZERO(&set);
   CPU_SET(0, &set);
-  if ((sched_setaffinity(getpid(), sizeof(cpu_set_t), &set)) != 0) {
-      fprintf(stderr, "Error setting CPU affinity. %i: %s", errno, strerror(errno));
-  }
+
   uint32_t print_cpu = 1;
-  if (print_cpu) {
-    fprintf(stdout, "PID: %i. CPU: %i\n. CPU: %i\n", getpid(), sched_getcpu(), CPU_ISSET(0, &set));
+  uint32_t print_clock = 1;
+
+  if ((sched_setaffinity(getpid(), sizeof(cpu_set_t), &set)) != 0) {
+    fprintf(stderr, "Error setting CPU affinity. %i: %s", errno, strerror(errno));
   }
 
-  uint32_t print_clock = 0;
+  if (print_cpu) {
+    fprintf(stdout, "PID: %i. CPU: %i\n. CPU: %i\n", 
+      getpid(), sched_getcpu(), CPU_ISSET(0, &set)
+    );
+  }
 
   // get system clock resolution
   struct timespec tp = { 0 };
@@ -92,5 +96,5 @@ int main(int argc, char **argv) {
   }
 
   // should probably write to a file
-  
+
 }
