@@ -11,7 +11,6 @@
 
 #define NSEC_IN_SEC 1000000000 // 1,000,000,000
 #define PAGESIZE 4096 // 4kB page size
-#define ITERATIONS 4096
 
 struct timespec typedef timespec_t;
 
@@ -73,9 +72,9 @@ int main(int argc, char **argv) {
       exit(EXIT_FAILURE);
   }
 
-  // allocate array to sum elapsed time to calculate an avg
-  uint64_t *sum = NULL;
-  if ((sum = calloc(sizeof(uint64_t), NUMPAGES)) == NULL) {
+  // allocate array to log elapsed time to calculate an avg
+  uint64_t *log = NULL;
+  if ((log = calloc(sizeof(uint64_t), NUMPAGES)) == NULL) {
       fprintf(stderr, "Error allocating memory. %i: %s", errno, strerror(errno));
       exit(EXIT_FAILURE);
   }
@@ -83,21 +82,19 @@ int main(int argc, char **argv) {
   timespec_t start = { 0 }, end = { 0 };
 
   uint32_t jump = PAGESIZE / sizeof(uint64_t);
+  uint32_t idx = 0;
 
-  for (uint32_t iter = 0; iter < ITERATIONS; iter++) {
-    uint32_t sum_counter = 0;
-    for (uint64_t i = 0; i < NUMPAGES * jump; i += jump) {
-      clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-      arr[i] += 1;
-      clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+  for (uint64_t i = 0; i < NUMPAGES * jump; i += jump) {
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    arr[i] += 1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-      // sum the time to access the current page
-      sum[sum_counter++] += elapsed_nsecs(&start, &end);
-    }
+    // log the time to access the current page
+    log[idx++] += elapsed_nsecs(&start, &end);
   }
 
   for (uint32_t i = 0; i < NUMPAGES; i++) {
-    fprintf(stdout, "%09llu\n", sum[i] / (uint64_t) ITERATIONS);
+    fprintf(stdout, "%09llu\n", log[i]);
   }
 
   // should probably write to a file
