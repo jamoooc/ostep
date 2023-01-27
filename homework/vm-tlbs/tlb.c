@@ -11,7 +11,6 @@
 
 #define NSEC_IN_SEC 1000000000 // 1,000,000,000
 #define PAGESIZE 4096 // 4kB page size
-#define NUMPAGES 4096
 #define ITERATIONS 4096
 
 struct timespec typedef timespec_t;
@@ -31,12 +30,18 @@ static uint64_t elapsed_nsecs(timespec_t *start, timespec_t *end) {
 
 int main(int argc, char **argv) {
 
+  if (argc != 4) {
+    fprintf(stderr, "Invalid arguments: ./tlb npages, print_clock, print_cpu\n");
+    exit(EXIT_FAILURE);
+  }
+
+  uint32_t NUMPAGES = strtol(argv[1], NULL, 10);
+  uint32_t print_clock = strtol(argv[2], NULL, 10);
+  uint32_t print_cpu = strtol(argv[3], NULL, 10);
+
   cpu_set_t set;
   CPU_ZERO(&set);
   CPU_SET(0, &set);
-
-  uint32_t print_cpu = 1;
-  uint32_t print_clock = 1;
 
   if ((sched_setaffinity(getpid(), sizeof(cpu_set_t), &set)) != 0) {
     fprintf(stderr, "Error setting CPU affinity. %i: %s", errno, strerror(errno));
