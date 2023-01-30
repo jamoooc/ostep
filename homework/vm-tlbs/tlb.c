@@ -93,10 +93,9 @@ int main(int argc, char **argv) {
     log[idx++] += elapsed_nsecs(&start, &end);
   }
 
+  // print elapsed page access times
   for (uint32_t i = 0; i < NUMPAGES; i++) {
-    fprintf(stdout, "%09llu\n", log[i]);
+    fprintf(stdout, "%llu\n", log[i]);
   }
-
-  // should probably write to a file
 
 }

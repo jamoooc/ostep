@@ -8,6 +8,7 @@
 /homework/cpu-api/file.txt
 
 /homework/**/bin
+/homework/**/logs
 /homework/**/*.md
 /homework/**/*.out
 
